@@ -1,0 +1,15 @@
+services:
+  ai:
+    build: .
+    ports:
+      - "8001:8001"
+    env_file: .env
+    depends_on:
+      - redis
+    networks:
+      - hub-network
+
+networks:
+  hub-network:
+    external: true
+    name: hub-network
