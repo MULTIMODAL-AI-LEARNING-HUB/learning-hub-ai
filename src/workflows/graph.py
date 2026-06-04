@@ -1,5 +1,6 @@
 """LangGraph workflow for multi-agent AI system."""
 
+import asyncio
 from typing import TypedDict
 from src.agents.intent import classify_intent
 from src.agents.retriever import retrieve
@@ -77,8 +78,8 @@ def should_retry(state: GraphState) -> str:
 
 
 def build_graph():
-    """Build a simple workflow graph without LangGraph dependency."""
-    def run_workflow(query: str, session_id: str, user_id: str, document_ids: list[str] | None = None) -> dict:
+    """Build an asynchronous workflow execution engine."""
+    async def run_workflow(query: str, session_id: str, user_id: str, document_ids: list[str] | None = None) -> dict:
         state: GraphState = {
             "query": query,
             "session_id": session_id,
@@ -95,26 +96,54 @@ def build_graph():
             "final_answer": "",
         }
 
-        # Step 1: Intent classification
-        state = intent_node(state)
+        # Step 1: Intent classification (Timeout 10s)
+        try:
+            state = await asyncio.wait_for(asyncio.to_thread(intent_node, state), timeout=10.0)
+        except (asyncio.TimeoutError, Exception):
+            state["intent"] = "qa"
+            state["sub_intent"] = "default"
 
         # Route based on intent
         if state["intent"] in ("qa", "summarize"):
-            # Step 2: Retrieve
-            state = retriever_node(state)
-            # Step 3: Grade
-            state = grader_node(state)
-            # Step 4: Generate
-            state = generator_node(state)
-            # Step 5: Reflect
-            state = reflection_node(state)
+            # Step 2: Retrieve (Timeout 5s)
+            try:
+                state = await asyncio.wait_for(asyncio.to_thread(retriever_node, state), timeout=5.0)
+            except (asyncio.TimeoutError, Exception):
+                state["retrieved_chunks"] = []
+
+            # Step 3: Grade (Timeout 15s)
+            try:
+                state = await asyncio.wait_for(asyncio.to_thread(grader_node, state), timeout=15.0)
+            except (asyncio.TimeoutError, Exception):
+                state["relevant_chunks"] = []
+
+            # Step 4: Generate (Timeout 60s)
+            try:
+                state = await asyncio.wait_for(asyncio.to_thread(generator_node, state), timeout=60.0)
+            except (asyncio.TimeoutError, Exception):
+                state["current_answer"] = "AI generation timed out. Please try again."
+                state["citations"] = []
+
+            # Step 5: Reflect (Timeout 30s)
+            try:
+                state = await asyncio.wait_for(asyncio.to_thread(reflection_node, state), timeout=30.0)
+            except (asyncio.TimeoutError, Exception):
+                state["needs_reflection"] = False
+
             # Step 6: Retry if needed
             if should_retry(state) == "retry":
-                state = generator_node(state)
-            # Step 7: Finalize
+                try:
+                    state = await asyncio.wait_for(asyncio.to_thread(generator_node, state), timeout=60.0)
+                except (asyncio.TimeoutError, Exception):
+                    pass
+
             state = finalize_node(state)
         else:
-            # For non-QA intents, just generate directly
+            # For non-QA intents, just generate directly (Timeout 60s)
+            try:
+                state = await asyncio.wait_for(asyncio.to_thread(generator_node, state), timeout=60.0)
+            except (asyncio.TimeoutError, Exception):
+                state["current_answer"] = "AI generation timed out. Please try again."
             state = finalize_node(state)
 
         return {

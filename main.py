@@ -3,7 +3,9 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
+
 from src.schemas.requests import QueryRequest, QuizGenerateRequest, EssayGradeRequest, FlashcardGenerateRequest
 from src.schemas.responses import (
     ChatResponse,
@@ -16,10 +18,20 @@ from src.schemas.responses import (
     EssayGradeResponse,
 )
 from src.workflows.graph import build_graph
+from src.core.config import settings
+from src.core.clients import get_qdrant_client, configure_gemini
+from src.utils.embeddings import get_embedding_model
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Preload embedding model and initialize connection clients on startup."""
+    # Preload sentence transformer model
+    get_embedding_model()
+    # Init Qdrant
+    get_qdrant_client()
+    # Configure Gemini API
+    configure_gemini()
     yield
 
 
@@ -37,6 +49,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 workflow = build_graph()
 
@@ -48,7 +61,25 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "service": "learning-hub-ai"}
+    """Verify health of connection pools and AI models."""
+    status_info = {
+        "status": "healthy",
+        "qdrant": "unknown",
+        "embedding_model": "loaded" if get_embedding_model() is not None else "failed",
+        "gemini_api": "configured" if settings.GEMINI_API_KEY else "missing",
+        "groq_api": "configured" if settings.GROQ_API_KEY else "missing",
+    }
+    
+    # Ping Qdrant
+    try:
+        client = get_qdrant_client()
+        client.get_collections()
+        status_info["qdrant"] = "healthy"
+    except Exception:
+        status_info["qdrant"] = "unhealthy"
+        status_info["status"] = "degraded"
+
+    return status_info
 
 
 @app.get("/ready")
@@ -58,8 +89,8 @@ def readiness_check():
 
 @app.post("/chat/ask", response_model=ChatResponse)
 async def chat_ask(payload: QueryRequest) -> ChatResponse:
-    """Process a chat query through the LangGraph workflow."""
-    result = workflow(
+    """Process a chat query through the async LangGraph-like workflow."""
+    result = await workflow(
         query=payload.query,
         session_id=payload.session_id,
         user_id=payload.user_id,
@@ -120,8 +151,15 @@ async def generate_flashcards(payload: FlashcardGenerateRequest) -> FlashcardGen
 async def grade_essay(payload: EssayGradeRequest) -> EssayGradeResponse:
     """Grade essay by comparing with source context."""
     from src.agents.essay import grade_essay as _grade_essay
+    from src.agents.retriever import retrieve
 
-    result = _grade_essay(payload.context, payload.essay_text)
+    context = payload.context or ""
+    # Retrieve context from Qdrant if only document_id was provided
+    if not context and getattr(payload, "document_id", None):
+        results = retrieve(query=payload.essay_text, document_ids=[payload.document_id], limit=5)
+        context = "\n".join([r["payload"]["text"] for r in results]) if results else ""
+
+    result = _grade_essay(context, payload.essay_text)
     return EssayGradeResponse(
         score=result.get("score", 0),
         feedback=result.get("feedback", ""),
