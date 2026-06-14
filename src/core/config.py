@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    INTERNAL_API_KEY: str = "your_internal_api_key"
 
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333

@@ -18,6 +18,7 @@ class QuizGenerateRequest(BaseModel):
 
 class EssayGradeRequest(BaseModel):
     document_id: str | None = None
+    user_id: str | None = None
     context: str | None = ""
     essay_text: str
 

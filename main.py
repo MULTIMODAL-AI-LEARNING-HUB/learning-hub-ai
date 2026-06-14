@@ -1,7 +1,7 @@
 """Learning Hub AI Service - Main FastAPI Application."""
 
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
@@ -54,6 +54,13 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 workflow = build_graph()
 
 
+async def verify_internal_key(x_internal_api_key: str = Header(..., alias="X-Internal-API-Key")):
+    """Verify the shared internal API key for service-to-service communication."""
+    if x_internal_api_key != settings.INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid Internal API Key")
+    return x_internal_api_key
+
+
 @app.get("/")
 def root():
     return {"message": "Learning Hub AI Service", "status": "running"}
@@ -66,8 +73,6 @@ def health_check():
         "status": "healthy",
         "qdrant": "unknown",
         "embedding_model": "loaded" if get_embedding_model() is not None else "failed",
-        "gemini_api": "configured" if settings.GEMINI_API_KEY else "missing",
-        "groq_api": "configured" if settings.GROQ_API_KEY else "missing",
     }
     
     # Ping Qdrant
@@ -88,7 +93,7 @@ def readiness_check():
 
 
 @app.post("/chat/ask", response_model=ChatResponse)
-async def chat_ask(payload: QueryRequest) -> ChatResponse:
+async def chat_ask(payload: QueryRequest, _=Depends(verify_internal_key)) -> ChatResponse:
     """Process a chat query through the async LangGraph-like workflow."""
     result = await workflow(
         query=payload.query,
@@ -115,7 +120,7 @@ async def chat_ask(payload: QueryRequest) -> ChatResponse:
 
 
 @app.post("/study/quiz/generate", response_model=QuizGenerateResponse)
-async def generate_quiz(payload: QuizGenerateRequest) -> QuizGenerateResponse:
+async def generate_quiz(payload: QuizGenerateRequest, _=Depends(verify_internal_key)) -> QuizGenerateResponse:
     """Generate quiz questions from context."""
     from src.agents.quiz import generate_quiz as _generate_quiz
 
@@ -134,7 +139,7 @@ async def generate_quiz(payload: QuizGenerateRequest) -> QuizGenerateResponse:
 
 
 @app.post("/study/flashcards/generate", response_model=FlashcardGenerateResponse)
-async def generate_flashcards(payload: FlashcardGenerateRequest) -> FlashcardGenerateResponse:
+async def generate_flashcards(payload: FlashcardGenerateRequest, _=Depends(verify_internal_key)) -> FlashcardGenerateResponse:
     """Generate flashcards from context."""
     from src.agents.flashcard import generate_flashcards as _generate_flashcards
 
@@ -148,7 +153,7 @@ async def generate_flashcards(payload: FlashcardGenerateRequest) -> FlashcardGen
 
 
 @app.post("/study/essay/grade", response_model=EssayGradeResponse)
-async def grade_essay(payload: EssayGradeRequest) -> EssayGradeResponse:
+async def grade_essay(payload: EssayGradeRequest, _=Depends(verify_internal_key)) -> EssayGradeResponse:
     """Grade essay by comparing with source context."""
     from src.agents.essay import grade_essay as _grade_essay
     from src.agents.retriever import retrieve
@@ -156,7 +161,7 @@ async def grade_essay(payload: EssayGradeRequest) -> EssayGradeResponse:
     context = payload.context or ""
     # Retrieve context from Qdrant if only document_id was provided
     if not context and getattr(payload, "document_id", None):
-        results = retrieve(query=payload.essay_text, document_ids=[payload.document_id], limit=5)
+        results = retrieve(query=payload.essay_text, document_ids=[payload.document_id], user_id=payload.user_id, limit=5)
         context = "\n".join([r["payload"]["text"] for r in results]) if results else ""
 
     result = _grade_essay(context, payload.essay_text)

@@ -36,7 +36,8 @@ def intent_node(state: GraphState) -> GraphState:
 def retriever_node(state: GraphState) -> GraphState:
     """Retrieve relevant chunks from Qdrant."""
     doc_ids = state.get("document_ids") or None
-    chunks = retrieve(state["query"], document_ids=doc_ids, limit=10)
+    user_id = state.get("user_id") or None
+    chunks = retrieve(state["query"], document_ids=doc_ids, user_id=user_id, limit=10)
     state["retrieved_chunks"] = chunks
     return state
 
