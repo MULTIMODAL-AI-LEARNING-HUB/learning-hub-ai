@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 # Install CPU-only PyTorch first so sentence-transformers picks it up instead
 # of the CUDA variant (saves ~1.5 GB from the final image).
-RUN pip install --user --no-cache-dir \
+RUN pip install --upgrade pip && \
+    pip install --user --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     -r requirements.txt
 
