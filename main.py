@@ -23,15 +23,21 @@ from src.core.clients import get_qdrant_client, configure_gemini
 from src.utils.embeddings import get_embedding_model
 
 
+workflow = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Preload embedding model and initialize connection clients on startup."""
+    global workflow
     # Preload sentence transformer model
     get_embedding_model()
     # Init Qdrant
     get_qdrant_client()
     # Configure Gemini API
     configure_gemini()
+    # Build graph workflow
+    workflow = build_graph()
     yield
 
 
@@ -50,8 +56,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-
-workflow = build_graph()
 
 
 async def verify_internal_key(x_internal_api_key: str = Header(..., alias="X-Internal-API-Key")):

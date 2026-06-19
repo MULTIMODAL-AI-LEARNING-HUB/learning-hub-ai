@@ -148,7 +148,7 @@ def build_graph():
             state = finalize_node(state)
 
         return {
-            "answer": state["final_answer"] or state["current_answer"],
+            "answer": state["final_answer"] or state["current_answer"] or "I'm sorry, I was unable to generate a response. Please try again.",
             "citations": state["citations"],
             "intent": state["intent"],
         }
