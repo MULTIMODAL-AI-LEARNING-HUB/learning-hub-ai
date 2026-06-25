@@ -15,7 +15,16 @@ def get_qdrant_client() -> QdrantClient:
     """Retrieve the QdrantClient singleton."""
     global _qdrant_client
     if _qdrant_client is None:
-        _qdrant_client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
+        if settings.QDRANT_URL:
+            _qdrant_client = QdrantClient(
+                url=settings.QDRANT_URL,
+                api_key=settings.QDRANT_API_KEY,
+            )
+        else:
+            _qdrant_client = QdrantClient(
+                host=settings.QDRANT_HOST,
+                port=settings.QDRANT_PORT,
+            )
     return _qdrant_client
 
 
