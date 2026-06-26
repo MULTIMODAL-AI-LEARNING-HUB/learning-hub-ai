@@ -3,7 +3,7 @@
 import asyncio
 from typing import TypedDict
 from src.agents.intent import classify_intent
-from src.agents.retriever import retrieve
+from src.agents.retriever import retrieve, retrieve_for_course
 from src.agents.grader import grade_chunks
 from src.agents.generator import generate_answer
 from src.agents.reflection import reflect
@@ -13,6 +13,7 @@ class GraphState(TypedDict):
     query: str
     session_id: str
     user_id: str
+    course_id: str | None
     document_ids: list[str]
     intent: str
     sub_intent: str
@@ -34,10 +35,26 @@ def intent_node(state: GraphState) -> GraphState:
 
 
 def retriever_node(state: GraphState) -> GraphState:
-    """Retrieve relevant chunks from Qdrant."""
+    """Retrieve relevant chunks from Qdrant.
+
+    Supports both personal documents and course-scoped retrieval.
+    If course_id is provided, retrieves only from that course.
+    Otherwise uses document_ids/user_id for filtering.
+    """
+    course_id = state.get("course_id")
     doc_ids = state.get("document_ids") or None
     user_id = state.get("user_id") or None
-    chunks = retrieve(state["query"], document_ids=doc_ids, user_id=user_id, limit=10)
+
+    if course_id:
+        chunks = retrieve_for_course(state["query"], course_id=course_id, limit=10)
+    else:
+        chunks = retrieve(
+            state["query"],
+            document_ids=doc_ids,
+            user_id=user_id,
+            limit=10
+        )
+
     state["retrieved_chunks"] = chunks
     return state
 
@@ -79,12 +96,23 @@ def should_retry(state: GraphState) -> str:
 
 
 def build_graph():
-    """Build an asynchronous workflow execution engine."""
-    async def run_workflow(query: str, session_id: str, user_id: str, document_ids: list[str] | None = None) -> dict:
+    """Build an asynchronous workflow execution engine.
+
+    Supports course-scoped RAG when course_id is provided.
+    When course_id is None, uses personal documents (document_ids/user_id).
+    """
+    async def run_workflow(
+        query: str,
+        session_id: str,
+        user_id: str,
+        document_ids: list[str] | None = None,
+        course_id: str | None = None
+    ) -> dict:
         state: GraphState = {
             "query": query,
             "session_id": session_id,
             "user_id": user_id,
+            "course_id": course_id,
             "document_ids": document_ids or [],
             "intent": "",
             "sub_intent": "",

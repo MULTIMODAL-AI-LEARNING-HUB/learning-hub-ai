@@ -98,12 +98,17 @@ def readiness_check():
 
 @app.post("/chat/ask", response_model=ChatResponse)
 async def chat_ask(payload: QueryRequest, _=Depends(verify_internal_key)) -> ChatResponse:
-    """Process a chat query through the async LangGraph-like workflow."""
+    """Process a chat query through the async LangGraph-like workflow.
+
+    Supports both personal documents (document_ids) and course-scoped RAG (course_id).
+    When course_id is provided, retrieves only from that course's materials.
+    """
     result = await workflow(
         query=payload.query,
         session_id=payload.session_id,
         user_id=payload.user_id,
         document_ids=payload.document_ids,
+        course_id=payload.course_id,
     )
 
     citations = [
@@ -112,6 +117,8 @@ async def chat_ask(payload: QueryRequest, _=Depends(verify_internal_key)) -> Cha
             chunk_id=c.get("chunk_id", ""),
             page_number=c.get("page_number"),
             text=c.get("text", ""),
+            material_id=c.get("material_id", ""),
+            course_id=c.get("course_id", ""),
         )
         for c in result.get("citations", [])
     ]

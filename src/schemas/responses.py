@@ -8,6 +8,8 @@ class Citation(BaseModel):
     chunk_id: str
     page_number: int | None = None
     text: str
+    material_id: str | None = None
+    course_id: str | None = None
 
 
 class TokenUsage(BaseModel):
