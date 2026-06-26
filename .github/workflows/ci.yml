@@ -92,4 +92,31 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           heroku stack:set container --app ${{ secrets.HEROKU_APP_NAME_AI }}
-          heroku container:release web --app ${{ secrets.HEROKU_APP_NAME_AI }}
+          heroku container:release web --app ${{ secrets.HEROKU_APP_NAME_AI }} || {
+            echo "========================================="
+            echo "Release failed! Fetching Heroku release logs..."
+            echo "========================================="
+            heroku releases --app ${{ secrets.HEROKU_APP_NAME_AI }} -n 5
+            heroku logs --app ${{ secrets.HEROKU_APP_NAME_AI }} -n 100
+            exit 1
+          }
+
+      - name: Health Check
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          echo "Waiting for dyno to start..."
+          sleep 20
+          echo "Checking dyno status..."
+          heroku ps --app ${{ secrets.HEROKU_APP_NAME_AI }}
+          HEROKU_APP_URL=$(heroku apps:info --app ${{ secrets.HEROKU_APP_NAME_AI }} --json | python3 -c "import sys, json; print(json.load(sys.stdin)['web_url'])")
+          echo "Checking health endpoint at: ${HEROKU_APP_URL}health"
+          HTTP_CODE=$(curl -f -s -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Health check passed! (HTTP $HTTP_CODE)"
+          else
+            echo "Health check failed! (HTTP $HTTP_CODE)"
+            heroku logs --app ${{ secrets.HEROKU_APP_NAME_AI }} -n 50
+            exit 1
+          fi
