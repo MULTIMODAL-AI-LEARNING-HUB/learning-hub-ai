@@ -107,16 +107,23 @@ jobs:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
           echo "Waiting for dyno to start..."
-          sleep 20
+          sleep 30
           echo "Checking dyno status..."
           heroku ps --app ${{ secrets.HEROKU_APP_NAME_AI }}
           HEROKU_APP_URL="https://${{ secrets.HEROKU_APP_NAME_AI }}.herokuapp.com/"
           echo "Checking health endpoint at: ${HEROKU_APP_URL}health"
-          HTTP_CODE=$(curl -f -s -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health")
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "Health check passed! (HTTP $HTTP_CODE)"
-          else
-            echo "Health check failed! (HTTP $HTTP_CODE)"
-            heroku logs --app ${{ secrets.HEROKU_APP_NAME_AI }} -n 50
-            exit 1
-          fi
+
+          for i in 1 2 3; do
+            echo "Attempt $i/3..."
+            HTTP_CODE=$(curl -f -s -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Health check passed! (HTTP $HTTP_CODE)"
+              exit 0
+            fi
+            echo "Attempt $i failed with HTTP $HTTP_CODE. Waiting 15s before retry..."
+            sleep 15
+          done
+
+          echo "Health check failed after 3 attempts!"
+          heroku logs --app ${{ secrets.HEROKU_APP_NAME_AI }} -n 100
+          exit 1
