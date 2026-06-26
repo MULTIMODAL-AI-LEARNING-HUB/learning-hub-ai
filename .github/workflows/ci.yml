@@ -115,7 +115,7 @@ jobs:
 
           for i in 1 2 3; do
             echo "Attempt $i/3..."
-            HTTP_CODE=$(curl -f -s -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health")
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health" || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Health check passed! (HTTP $HTTP_CODE)"
               exit 0
