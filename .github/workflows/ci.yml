@@ -110,12 +110,15 @@ jobs:
           sleep 30
           echo "Checking dyno status..."
           heroku ps --app ${{ secrets.HEROKU_APP_NAME_AI }}
-          HEROKU_APP_URL="https://${{ secrets.HEROKU_APP_NAME_AI }}.herokuapp.com/"
+          HEROKU_APP_URL=$(heroku apps:info --app ${{ secrets.HEROKU_APP_NAME_AI }} | grep -i "web_url" | awk '{print $2}')
+          if [ -z "$HEROKU_APP_URL" ]; then
+            HEROKU_APP_URL="https://${{ secrets.HEROKU_APP_NAME_AI }}.herokuapp.com/"
+          fi
           echo "Checking health endpoint at: ${HEROKU_APP_URL}health"
 
           for i in 1 2 3; do
             echo "Attempt $i/3..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health" || echo "000")
+            HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" "${HEROKU_APP_URL}health" || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Health check passed! (HTTP $HTTP_CODE)"
               exit 0
