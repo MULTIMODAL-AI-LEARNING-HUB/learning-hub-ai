@@ -10,6 +10,7 @@ class Citation(BaseModel):
     text: str
     material_id: str | None = None
     course_id: str | None = None
+    lesson_id: str | None = None
 
 
 class TokenUsage(BaseModel):

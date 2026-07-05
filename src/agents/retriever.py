@@ -12,6 +12,7 @@ def retrieve(
     document_ids: list[str] | None = None,
     user_id: str | None = None,
     course_id: str | None = None,
+    lesson_id: str | None = None,
     limit: int = 10
 ) -> list[dict]:
     """Retrieve relevant chunks from Qdrant using vector similarity search.
@@ -21,6 +22,7 @@ def retrieve(
         document_ids: Optional list of document IDs to filter by
         user_id: Optional user ID to filter by (for personal documents)
         course_id: Optional course ID to filter by (course-scoped RAG)
+        lesson_id: Optional lesson ID to filter by (lesson-scoped RAG)
         limit: Maximum number of results to return
 
     Returns:
@@ -44,6 +46,11 @@ def retrieve(
     if course_id:
         must_conditions.append(
             FieldCondition(key="course_id", match=MatchValue(value=course_id))
+        )
+
+    if lesson_id:
+        must_conditions.append(
+            FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id))
         )
 
     query_filter = Filter(must=must_conditions) if must_conditions else None
@@ -71,15 +78,18 @@ def retrieve(
 def retrieve_for_course(
     query: str,
     course_id: str,
+    lesson_id: str | None = None,
     limit: int = 10
 ) -> list[dict]:
-    """Retrieve relevant chunks from Qdrant for a specific course.
+    """Retrieve relevant chunks from Qdrant for a specific course or lesson.
 
     This is a convenience function for course-scoped RAG.
+    If lesson_id is provided, retrieves only from that lesson.
 
     Args:
         query: Search query string
         course_id: Course ID to filter by
+        lesson_id: Optional lesson ID to filter by (lesson-scoped RAG)
         limit: Maximum number of results to return
 
     Returns:
@@ -88,6 +98,7 @@ def retrieve_for_course(
     return retrieve(
         query=query,
         course_id=course_id,
+        lesson_id=lesson_id,
         limit=limit
     )
 
