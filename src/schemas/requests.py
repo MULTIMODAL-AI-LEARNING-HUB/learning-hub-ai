@@ -9,6 +9,7 @@ class QueryRequest(BaseModel):
     query: str
     document_ids: list[str] = []
     course_id: str | None = None
+    lesson_id: str | None = None
 
 
 class QuizGenerateRequest(BaseModel):

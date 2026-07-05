@@ -14,6 +14,7 @@ class GraphState(TypedDict):
     session_id: str
     user_id: str
     course_id: str | None
+    lesson_id: str | None
     document_ids: list[str]
     intent: str
     sub_intent: str
@@ -39,14 +40,21 @@ def retriever_node(state: GraphState) -> GraphState:
 
     Supports both personal documents and course-scoped retrieval.
     If course_id is provided, retrieves only from that course.
+    If lesson_id is also provided, retrieves only from that lesson.
     Otherwise uses document_ids/user_id for filtering.
     """
     course_id = state.get("course_id")
+    lesson_id = state.get("lesson_id")
     doc_ids = state.get("document_ids") or None
     user_id = state.get("user_id") or None
 
     if course_id:
-        chunks = retrieve_for_course(state["query"], course_id=course_id, limit=10)
+        chunks = retrieve_for_course(
+            state["query"],
+            course_id=course_id,
+            lesson_id=lesson_id,
+            limit=10
+        )
     else:
         chunks = retrieve(
             state["query"],
@@ -106,13 +114,15 @@ def build_graph():
         session_id: str,
         user_id: str,
         document_ids: list[str] | None = None,
-        course_id: str | None = None
+        course_id: str | None = None,
+        lesson_id: str | None = None
     ) -> dict:
         state: GraphState = {
             "query": query,
             "session_id": session_id,
             "user_id": user_id,
             "course_id": course_id,
+            "lesson_id": lesson_id,
             "document_ids": document_ids or [],
             "intent": "",
             "sub_intent": "",
