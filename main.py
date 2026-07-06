@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
 
-from src.schemas.requests import QueryRequest, QuizGenerateRequest, EssayGradeRequest, FlashcardGenerateRequest
+from src.schemas.requests import QueryRequest, QuizGenerateRequest, EssayGradeRequest, FlashcardGenerateRequest, QuizGenerateFromLessonRequest
 from src.schemas.responses import (
     ChatResponse,
     Citation,
@@ -140,6 +140,45 @@ async def generate_quiz(payload: QuizGenerateRequest, _=Depends(verify_internal_
     from src.agents.quiz import generate_quiz as _generate_quiz
 
     questions = _generate_quiz(payload.context, payload.quiz_type, payload.question_count)
+    return QuizGenerateResponse(
+        questions=[
+            QuizQuestion(
+                id=q["id"],
+                question=q["question"],
+                options=q["options"],
+                correct_answer=q["correct_answer"],
+            )
+            for q in questions
+        ]
+    )
+
+
+@app.post("/study/quiz/generate-from-lesson", response_model=QuizGenerateResponse)
+async def generate_quiz_from_lesson(payload: QuizGenerateFromLessonRequest, _=Depends(verify_internal_key)) -> QuizGenerateResponse:
+    """Retrieve lesson material context from Qdrant and generate quiz."""
+    from src.agents.retriever import retrieve
+    from src.agents.quiz import generate_quiz as _generate_quiz
+
+    # 1. Retrieve chunks from Qdrant associated with the lesson
+    chunks = retrieve(query="", lesson_id=payload.lesson_id, limit=20)
+    
+    # 2. Combine chunk texts
+    retrieved_text = "\n".join([chunk["payload"].get("text", "") for chunk in chunks if chunk.get("payload")])
+    
+    # 3. Combine with direct lesson content if any
+    context_parts = []
+    if retrieved_text:
+        context_parts.append(retrieved_text)
+    if payload.lesson_content:
+        context_parts.append(payload.lesson_content)
+        
+    context = "\n\n".join(context_parts)
+    if not context:
+        # Fallback empty context warning
+        context = "No content available. Ask sample general questions."
+
+    # 4. Generate quiz questions using the AI agent
+    questions = _generate_quiz(context, "quick", payload.question_count)
     return QuizGenerateResponse(
         questions=[
             QuizQuestion(
