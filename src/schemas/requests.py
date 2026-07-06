@@ -18,6 +18,15 @@ class QuizGenerateRequest(BaseModel):
     question_count: int = 5
 
 
+class QuizGenerateFromLessonRequest(BaseModel):
+    lesson_id: str
+    course_id: str
+    user_id: str | None = None
+    question_count: int = 5
+    lesson_content: str | None = ""
+
+
+
 class EssayGradeRequest(BaseModel):
     document_id: str | None = None
     user_id: str | None = None
