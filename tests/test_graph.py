@@ -1,6 +1,7 @@
 import pytest
-from unittest.mock import patch, MagicMock
-from src.workflows.graph import build_graph, intent_node, finalize_node, should_retry
+from unittest.mock import patch
+
+from src.workflows.graph import build_graph, finalize_node, should_retry
 
 @pytest.mark.asyncio
 async def test_should_retry_logic():
