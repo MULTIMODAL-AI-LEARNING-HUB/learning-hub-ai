@@ -2,6 +2,7 @@
 
 import json
 import uuid
+
 from src.llm.gemini_client import generate_content
 
 FLASHCARD_PROMPT = """Bạn là AI tạo flashcard học tập.

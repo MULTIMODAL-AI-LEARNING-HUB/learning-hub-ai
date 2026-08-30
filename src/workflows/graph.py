@@ -2,11 +2,12 @@
 
 import asyncio
 from typing import TypedDict
-from src.agents.intent import classify_intent
-from src.agents.retriever import retrieve, retrieve_for_course
-from src.agents.grader import grade_chunks
+
 from src.agents.generator import generate_answer
+from src.agents.grader import grade_chunks
+from src.agents.intent import classify_intent
 from src.agents.reflection import reflect
+from src.agents.retriever import retrieve, retrieve_for_course
 
 
 class GraphState(TypedDict):

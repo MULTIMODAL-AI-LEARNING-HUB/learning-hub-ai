@@ -1,6 +1,7 @@
 """Real embedding generation using sentence-transformers."""
 
 from typing import Optional
+
 from sentence_transformers import SentenceTransformer
 
 _model: Optional[SentenceTransformer] = None

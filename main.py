@@ -1,26 +1,32 @@
 """Learning Hub AI Service - Main FastAPI Application."""
 
 import os
-from fastapi import FastAPI, Header, HTTPException, Depends
-from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
 
-from src.schemas.requests import QueryRequest, QuizGenerateRequest, EssayGradeRequest, FlashcardGenerateRequest, QuizGenerateFromLessonRequest
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
+
+from src.core.clients import configure_gemini, get_qdrant_client
+from src.core.config import settings
+from src.schemas.requests import (
+    EssayGradeRequest,
+    FlashcardGenerateRequest,
+    QueryRequest,
+    QuizGenerateFromLessonRequest,
+    QuizGenerateRequest,
+)
 from src.schemas.responses import (
     ChatResponse,
     Citation,
-    TokenUsage,
-    QuizGenerateResponse,
-    QuizQuestion,
+    EssayGradeResponse,
     FlashcardGenerateResponse,
     FlashcardItem,
-    EssayGradeResponse,
+    QuizGenerateResponse,
+    QuizQuestion,
+    TokenUsage,
 )
-from src.workflows.graph import build_graph
-from src.core.config import settings
-from src.core.clients import get_qdrant_client, configure_gemini
 from src.utils.embeddings import get_embedding_model
-
+from src.workflows.graph import build_graph
 
 workflow = None
 
@@ -148,8 +154,8 @@ async def generate_quiz(payload: QuizGenerateRequest, _=Depends(verify_internal_
 @app.post("/study/quiz/generate-from-lesson", response_model=QuizGenerateResponse)
 async def generate_quiz_from_lesson(payload: QuizGenerateFromLessonRequest, _=Depends(verify_internal_key)) -> QuizGenerateResponse:
     """Retrieve lesson material context from Qdrant and generate quiz."""
-    from src.agents.retriever import retrieve
     from src.agents.quiz import generate_quiz as _generate_quiz
+    from src.agents.retriever import retrieve
 
     # 1. Retrieve chunks from Qdrant associated with the lesson
     chunks = retrieve(query="", lesson_id=payload.lesson_id, limit=20)

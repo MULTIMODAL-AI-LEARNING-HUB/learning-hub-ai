@@ -1,6 +1,7 @@
 """Intent classifier agent using Groq (fast, low cost)."""
 
 import json
+
 from src.llm.groq_client import chat_completion
 
 INTENT_SYSTEM_PROMPT = """Bạn là một classifier phân loại ý định người dùng.

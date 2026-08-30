@@ -1,6 +1,7 @@
 """Gemini client wrapper for high-quality generation."""
 
 import google.generativeai as genai
+
 from src.core.config import settings
 
 _configured = False

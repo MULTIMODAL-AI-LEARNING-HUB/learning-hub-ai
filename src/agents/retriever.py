@@ -1,6 +1,7 @@
 """Retriever agent using Qdrant vector search."""
 
 from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+
 from src.core.clients import get_qdrant_client
 from src.utils.embeddings import generate_embedding
 

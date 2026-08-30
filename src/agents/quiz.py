@@ -1,8 +1,9 @@
 """Quiz generator agent."""
 
 import json
-from src.llm.gemini_client import generate_content
 import uuid
+
+from src.llm.gemini_client import generate_content
 
 QUIZ_SYSTEM_PROMPT = """Bạn là một AI tạo câu hỏi trắc nghiệm.
 Dựa vào tài liệu, tạo câu hỏi trắc nghiệm với 4 lựa chọn A, B, C, D.

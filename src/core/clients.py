@@ -1,9 +1,11 @@
 """Third-party clients singletons for AI service."""
 
 from typing import Optional
-from qdrant_client import QdrantClient
-from groq import Groq
+
 import google.generativeai as genai
+from groq import Groq
+from qdrant_client import QdrantClient
+
 from src.core.config import settings
 
 _qdrant_client: Optional[QdrantClient] = None

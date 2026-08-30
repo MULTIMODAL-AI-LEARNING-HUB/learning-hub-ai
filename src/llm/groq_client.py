@@ -1,6 +1,7 @@
 """Groq client wrapper for fast LLM calls (intent classification, grading)."""
 
 from groq import Groq
+
 from src.core.config import settings
 
 _client: Groq | None = None

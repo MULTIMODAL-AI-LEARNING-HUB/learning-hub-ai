@@ -1,6 +1,7 @@
 """Essay grader agent."""
 
 import json
+
 from src.llm.gemini_client import generate_content
 
 ESSAY_GRADER_PROMPT = """Bạn là giáo viên chấm bài.
