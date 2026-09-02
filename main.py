@@ -1,6 +1,7 @@
 """Learning Hub AI Service - Main FastAPI Application."""
 
 import os
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -58,7 +59,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 async def verify_internal_key(x_internal_api_key: str = Header(..., alias="X-Internal-API-Key")):
     """Verify the shared internal API key for service-to-service communication."""
-    if x_internal_api_key != settings.INTERNAL_API_KEY:
+    if not secrets.compare_digest(x_internal_api_key, settings.INTERNAL_API_KEY):
         raise HTTPException(status_code=403, detail="Forbidden: Invalid Internal API Key")
     return x_internal_api_key
 
