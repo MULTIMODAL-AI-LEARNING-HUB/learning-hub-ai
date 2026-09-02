@@ -1,14 +1,19 @@
 """Real embedding generation using sentence-transformers."""
 
-from typing import Optional
+from __future__ import annotations
 
-from sentence_transformers import SentenceTransformer
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 _model: Optional[SentenceTransformer] = None
 
 
 def get_embedding_model() -> SentenceTransformer:
     """Get or load the SentenceTransformer model singleton."""
+    from sentence_transformers import SentenceTransformer
+
     global _model
     if _model is None:
         # Load local lightweight 384-dimensional sentence transformer model

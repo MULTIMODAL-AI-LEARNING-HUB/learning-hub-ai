@@ -1,12 +1,14 @@
-"""Third-party clients singletons for AI service."""
+"""Third-party client singletons for AI service."""
 
-from typing import Optional
+from __future__ import annotations
 
-import google.generativeai as genai
-from groq import Groq
-from qdrant_client import QdrantClient
+from typing import TYPE_CHECKING, Optional
 
 from src.core.config import settings
+
+if TYPE_CHECKING:
+    from groq import Groq
+    from qdrant_client import QdrantClient
 
 _qdrant_client: Optional[QdrantClient] = None
 _groq_client: Optional[Groq] = None
@@ -15,6 +17,8 @@ _gemini_configured: bool = False
 
 def get_qdrant_client() -> QdrantClient:
     """Retrieve the QdrantClient singleton."""
+    from qdrant_client import QdrantClient
+
     global _qdrant_client
     if _qdrant_client is None:
         if settings.QDRANT_URL:
@@ -32,6 +36,8 @@ def get_qdrant_client() -> QdrantClient:
 
 def get_groq_client() -> Groq:
     """Retrieve the Groq client singleton."""
+    from groq import Groq
+
     global _groq_client
     if _groq_client is None:
         _groq_client = Groq(api_key=settings.GROQ_API_KEY)
@@ -40,6 +46,8 @@ def get_groq_client() -> Groq:
 
 def configure_gemini() -> None:
     """Initialize and configure Gemini API."""
+    import google.generativeai as genai
+
     global _gemini_configured
     if not _gemini_configured:
         genai.configure(api_key=settings.GEMINI_API_KEY)

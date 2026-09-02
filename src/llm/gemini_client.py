@@ -1,13 +1,13 @@
 """Gemini client wrapper for high-quality generation."""
 
-import google.generativeai as genai
-
 from src.core.config import settings
 
 _configured = False
 
 
 def _configure():
+    import google.generativeai as genai
+
     global _configured
     if not _configured:
         genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -15,6 +15,8 @@ def _configure():
 
 
 def generate_content(prompt: str, system_instruction: str | None = None) -> str:
+    import google.generativeai as genai
+
     _configure()
     model = genai.GenerativeModel(
         model_name=settings.GEMINI_MODEL,
@@ -25,6 +27,8 @@ def generate_content(prompt: str, system_instruction: str | None = None) -> str:
 
 
 def chat(messages: list[dict], system_instruction: str | None = None) -> str:
+    import google.generativeai as genai
+
     _configure()
     model = genai.GenerativeModel(
         model_name=settings.GEMINI_MODEL,

@@ -1,11 +1,51 @@
 """Retriever agent using Qdrant vector search."""
 
-from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
-
 from src.core.clients import get_qdrant_client
 from src.utils.embeddings import generate_embedding
 
 COLLECTION_NAME = "document_chunks"
+
+
+def _build_filter(
+    *,
+    document_ids: list[str] | None = None,
+    user_id: str | None = None,
+    course_id: str | None = None,
+    lesson_id: str | None = None,
+    material_ids: list[str] | None = None,
+    material_type: str | None = None,
+):
+    """Build a Qdrant filter without importing Qdrant during test collection."""
+    from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+
+    must_conditions = []
+
+    if document_ids:
+        must_conditions.append(
+            FieldCondition(key="document_id", match=MatchAny(any=document_ids))
+        )
+    if user_id:
+        must_conditions.append(
+            FieldCondition(key="user_id", match=MatchValue(value=user_id))
+        )
+    if course_id:
+        must_conditions.append(
+            FieldCondition(key="course_id", match=MatchValue(value=course_id))
+        )
+    if lesson_id:
+        must_conditions.append(
+            FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id))
+        )
+    if material_ids:
+        must_conditions.append(
+            FieldCondition(key="material_id", match=MatchAny(any=material_ids))
+        )
+    if material_type:
+        must_conditions.append(
+            FieldCondition(key="material_type", match=MatchValue(value=material_type))
+        )
+
+    return Filter(must=must_conditions) if must_conditions else None
 
 
 def retrieve(
@@ -32,29 +72,12 @@ def retrieve(
     client = get_qdrant_client()
     query_vector = generate_embedding(query)
 
-    must_conditions = []
-
-    if document_ids:
-        must_conditions.append(
-            FieldCondition(key="document_id", match=MatchAny(any=document_ids))
-        )
-
-    if user_id:
-        must_conditions.append(
-            FieldCondition(key="user_id", match=MatchValue(value=user_id))
-        )
-
-    if course_id:
-        must_conditions.append(
-            FieldCondition(key="course_id", match=MatchValue(value=course_id))
-        )
-
-    if lesson_id:
-        must_conditions.append(
-            FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id))
-        )
-
-    query_filter = Filter(must=must_conditions) if must_conditions else None
+    query_filter = _build_filter(
+        document_ids=document_ids,
+        user_id=user_id,
+        course_id=course_id,
+        lesson_id=lesson_id,
+    )
 
     try:
         results = client.query_points(
@@ -126,24 +149,11 @@ def retrieve_with_material_filter(
     client = get_qdrant_client()
     query_vector = generate_embedding(query)
 
-    must_conditions = []
-
-    if material_ids:
-        must_conditions.append(
-            FieldCondition(key="material_id", match=MatchAny(any=material_ids))
-        )
-
-    if course_id:
-        must_conditions.append(
-            FieldCondition(key="course_id", match=MatchValue(value=course_id))
-        )
-
-    if material_type:
-        must_conditions.append(
-            FieldCondition(key="material_type", match=MatchValue(value=material_type))
-        )
-
-    query_filter = Filter(must=must_conditions) if must_conditions else None
+    query_filter = _build_filter(
+        material_ids=material_ids,
+        course_id=course_id,
+        material_type=material_type,
+    )
 
     try:
         results = client.query_points(
