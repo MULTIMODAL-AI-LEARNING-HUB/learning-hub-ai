@@ -1,10 +1,12 @@
 """Settings for AI service."""
 
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     DEBUG: bool = False
 
     GROQ_API_KEY: str = ""
@@ -28,10 +30,6 @@ class Settings(BaseSettings):
             if not self.INTERNAL_API_KEY or self.INTERNAL_API_KEY in {"", "your_internal_api_key"}:
                 raise ValueError("INTERNAL_API_KEY must be a secure, non-default string in production")
         return self
-
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
 
 
 settings = Settings()
