@@ -9,5 +9,6 @@ pydantic>=2.7.4,<3.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 
-# NOTE: torch is installed as CPU-only via --extra-index-url in Dockerfile/CI
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers==2.5.1
