@@ -225,7 +225,26 @@ async def grade_essay(payload: EssayGradeRequest, _=Depends(verify_internal_key)
     )
 
 
+@app.post("/internal/keys/sync")
+async def sync_keys(payload: dict, _=Depends(verify_internal_key)):
+    """Sync API keys from gateway into in-memory key rotator."""
+    from src.llm.key_rotator import GeminiKeyRotator
+
+    keys_list = payload.get("keys", [])
+    GeminiKeyRotator.get_instance().sync_keys(keys_list)
+    return {"synced": True, "count": len(keys_list)}
+
+
+@app.get("/internal/keys/status")
+async def get_keys_status(_=Depends(verify_internal_key)):
+    """Get active key rotator status and masked key list."""
+    from src.llm.key_rotator import GeminiKeyRotator
+
+    return GeminiKeyRotator.get_instance().get_status()
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8001"))
     uvicorn.run(app, host="0.0.0.0", port=port)
+

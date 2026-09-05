@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
 
     GROQ_MODEL: str = "llama3-8b-8192"
-    GEMINI_MODEL: str = "gemini-1.5-pro"
+    GEMINI_MODEL: str = "gemini-2.0-flash-lite"
 
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":
