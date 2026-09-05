@@ -231,6 +231,14 @@ async def sync_keys(payload: dict, _=Depends(verify_internal_key)):
     from src.llm.key_rotator import GeminiKeyRotator
 
     keys_list = payload.get("keys", [])
+    if not isinstance(keys_list, list) or len(keys_list) > 100:
+        raise HTTPException(status_code=400, detail="Invalid key list")
+    keys_list = [
+        item for item in keys_list
+        if isinstance(item, dict)
+        and isinstance(item.get("api_key"), str)
+        and 16 <= len(item["api_key"].strip()) <= 512
+    ]
     GeminiKeyRotator.get_instance().sync_keys(keys_list)
     return {"synced": True, "count": len(keys_list)}
 

@@ -26,9 +26,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":
-        if not self.DEBUG:
-            if not self.INTERNAL_API_KEY or self.INTERNAL_API_KEY in {"", "your_internal_api_key"}:
-                raise ValueError("INTERNAL_API_KEY must be a secure, non-default string in production")
+        weak_values = {"", "secret", "changeme", "your_internal_api_key", "your_internal_key"}
+        if not self.INTERNAL_API_KEY or self.INTERNAL_API_KEY.lower() in weak_values or len(self.INTERNAL_API_KEY) < 16:
+            if not self.DEBUG:
+                raise ValueError("INTERNAL_API_KEY must be a secure, non-default string (min 16 chars) in production")
+        for name, value in (("GROQ_API_KEY", self.GROQ_API_KEY), ("GEMINI_API_KEY", self.GEMINI_API_KEY)):
+            if value and (value.lower() in weak_values or len(value) < 16):
+                raise ValueError(f"{name} is too short or uses a weak placeholder")
         return self
 
 
