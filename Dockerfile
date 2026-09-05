@@ -28,4 +28,4 @@ ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONPATH=/root/.local/lib/python3.10/site-packages
 ENV PYTHONUNBUFFERED=1
 
-CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8001}"]
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port $PORT"]
