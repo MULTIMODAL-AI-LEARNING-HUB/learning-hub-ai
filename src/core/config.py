@@ -20,13 +20,18 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    REDIS_URL: str = ""
+    AI_CHAT_RATE_LIMIT_PER_MINUTE: int = 20
 
     GROQ_MODEL: str = "llama3-8b-8192"
     GEMINI_MODEL: str = "gemini-2.0-flash-lite"
 
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":
-        weak_values = {"", "secret", "changeme", "your_internal_api_key", "your_internal_key"}
+        weak_values = {
+            "", "secret", "changeme", "your_internal_api_key", "your_internal_key",
+            "your_gemini_api_key", "your_groq_api_key", "change_me", "change_me_api_key",
+        }
         if not self.INTERNAL_API_KEY or self.INTERNAL_API_KEY.lower() in weak_values or len(self.INTERNAL_API_KEY) < 16:
             if not self.DEBUG:
                 raise ValueError("INTERNAL_API_KEY must be a secure, non-default string (min 16 chars) in production")

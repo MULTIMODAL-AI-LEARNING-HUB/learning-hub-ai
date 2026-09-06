@@ -9,6 +9,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from src.core.clients import configure_gemini, get_qdrant_client
 from src.core.config import settings
+from src.core.rate_limit import enforce_chat_rate_limit
 from src.schemas.requests import (
     EssayGradeRequest,
     FlashcardGenerateRequest,
@@ -96,7 +97,11 @@ def readiness_check():
 
 
 @app.post("/chat/ask", response_model=ChatResponse)
-async def chat_ask(payload: QueryRequest, _=Depends(verify_internal_key)) -> ChatResponse:
+async def chat_ask(
+    payload: QueryRequest,
+    _=Depends(verify_internal_key),
+    __=Depends(enforce_chat_rate_limit),
+) -> ChatResponse:
     """Process a chat query through the async LangGraph-like workflow.
 
     Supports both personal documents (document_ids), course-scoped RAG (course_id),
