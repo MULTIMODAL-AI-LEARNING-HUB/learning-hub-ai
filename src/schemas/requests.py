@@ -10,6 +10,7 @@ class QueryRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list, max_length=100)
     course_id: str | None = Field(default=None, max_length=100)
     lesson_id: str | None = Field(default=None, max_length=100)
+    chat_history: list[dict] | None = None
 
 
 class QuizGenerateRequest(BaseModel):

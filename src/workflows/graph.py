@@ -1,7 +1,11 @@
 """LangGraph workflow for multi-agent AI system."""
 
 import asyncio
+import logging
+import time
 from typing import TypedDict
+
+logger = logging.getLogger("ai.workflow")
 
 from src.agents.generator import generate_answer
 from src.agents.grader import grade_chunks
@@ -17,6 +21,7 @@ class GraphState(TypedDict):
     course_id: str | None
     lesson_id: str | None
     document_ids: list[str]
+    chat_history: list[dict]
     intent: str
     sub_intent: str
     retrieved_chunks: list[dict]
@@ -77,7 +82,12 @@ def grader_node(state: GraphState) -> GraphState:
 
 def generator_node(state: GraphState) -> GraphState:
     """Generate answer based on relevant chunks."""
-    result = generate_answer(state["query"], state["relevant_chunks"], intent=state["intent"])
+    result = generate_answer(
+        state["query"],
+        state["relevant_chunks"],
+        intent=state["intent"],
+        chat_history=state.get("chat_history") or [],
+    )
     state["current_answer"] = result.get("answer", "")
     state["citations"] = result.get("citations", [])
     return state
@@ -116,7 +126,8 @@ def build_graph():
         user_id: str,
         document_ids: list[str] | None = None,
         course_id: str | None = None,
-        lesson_id: str | None = None
+        lesson_id: str | None = None,
+        chat_history: list[dict] | None = None,
     ) -> dict:
         state: GraphState = {
             "query": query,
@@ -125,6 +136,7 @@ def build_graph():
             "course_id": course_id,
             "lesson_id": lesson_id,
             "document_ids": document_ids or [],
+            "chat_history": chat_history or [],
             "intent": "",
             "sub_intent": "",
             "retrieved_chunks": [],
@@ -137,38 +149,48 @@ def build_graph():
         }
 
         # Step 1: Intent classification (Timeout 10s)
+        _t0 = time.monotonic()
         try:
             state = await asyncio.wait_for(asyncio.to_thread(intent_node, state), timeout=10.0)
         except (asyncio.TimeoutError, Exception):
             state["intent"] = "qa"
             state["sub_intent"] = "default"
+        logger.info("node=intent latency_ms=%.0f session=%s intent=%s", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), state.get("intent", ""))
 
         # Route based on intent
         if state["intent"] in ("qa", "summarize"):
             # Step 2: Retrieve (Timeout 5s)
+            _t0 = time.monotonic()
             try:
                 state = await asyncio.wait_for(asyncio.to_thread(retriever_node, state), timeout=5.0)
             except (asyncio.TimeoutError, Exception):
                 state["retrieved_chunks"] = []
+            logger.info("node=retriever latency_ms=%.0f session=%s chunks=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("retrieved_chunks", [])))
 
             # Step 3: Grade (Timeout 15s)
+            _t0 = time.monotonic()
             try:
                 state = await asyncio.wait_for(asyncio.to_thread(grader_node, state), timeout=15.0)
             except (asyncio.TimeoutError, Exception):
                 state["relevant_chunks"] = []
+            logger.info("node=grader latency_ms=%.0f session=%s relevant=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("relevant_chunks", [])))
 
             # Step 4: Generate (Timeout 60s)
+            _t0 = time.monotonic()
             try:
                 state = await asyncio.wait_for(asyncio.to_thread(generator_node, state), timeout=60.0)
             except (asyncio.TimeoutError, Exception):
                 state["current_answer"] = "AI generation timed out. Please try again."
                 state["citations"] = []
+            logger.info("node=generator latency_ms=%.0f session=%s answer_len=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("current_answer", "")))
 
             # Step 5: Reflect (Timeout 30s)
+            _t0 = time.monotonic()
             try:
                 state = await asyncio.wait_for(asyncio.to_thread(reflection_node, state), timeout=30.0)
             except (asyncio.TimeoutError, Exception):
                 state["needs_reflection"] = False
+            logger.info("node=reflector latency_ms=%.0f session=%s needs_retry=%s", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), state.get("needs_reflection", False))
 
             # Step 6: Retry if needed
             if should_retry(state) == "retry":

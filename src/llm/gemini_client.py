@@ -35,6 +35,17 @@ def generate_content(prompt: str, system_instruction: str | None = None) -> str:
                 model = genai.GenerativeModel(model_name=settings.GEMINI_MODEL)
                 full_prompt = f"CHỈ DẪN HỆ THỐNG:\n{system_instruction}\n\n{prompt}" if system_instruction else prompt
                 response = model.generate_content(full_prompt)
+            try:
+                usage = response.usage_metadata
+                logger.info(
+                    "gemini token_usage prompt=%s output=%s total=%s model=%s",
+                    getattr(usage, "prompt_token_count", "?"),
+                    getattr(usage, "candidates_token_count", "?"),
+                    getattr(usage, "total_token_count", "?"),
+                    settings.GEMINI_MODEL,
+                )
+            except Exception:
+                pass
             return response.text or ""
         except Exception as e:
             last_error = e
@@ -87,4 +98,36 @@ def chat(messages: list[dict], system_instruction: str | None = None) -> str:
     if last_error:
         raise last_error
     return ""
+
+
+def generate_content_stream(prompt: str, system_instruction: str | None = None):
+    """Stream Gemini response token by token. Yields text chunks as they arrive."""
+    import google.generativeai as genai
+
+    rotator = GeminiKeyRotator.get_instance()
+    key = rotator.get_next_key()
+    genai.configure(api_key=key)
+
+    try:
+        try:
+            model = genai.GenerativeModel(
+                model_name=settings.GEMINI_MODEL,
+                system_instruction=system_instruction,
+            )
+        except TypeError:
+            model = genai.GenerativeModel(model_name=settings.GEMINI_MODEL)
+
+        response = model.generate_content(prompt, stream=True)
+        for chunk in response:
+            try:
+                text = chunk.text
+                if text:
+                    yield text
+            except Exception:
+                continue
+    except Exception as e:
+        if _is_rate_limit_or_quota_error(e):
+            rotator.report_rate_limit(key, cooldown_seconds=60.0)
+        logger.error("Gemini stream error: %s", e)
+        raise
 

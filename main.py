@@ -4,7 +4,9 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 
+import json as _json
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.gzip import GZipMiddleware
 
 from src.core.clients import configure_gemini, get_qdrant_client
@@ -116,6 +118,7 @@ async def chat_ask(
         document_ids=payload.document_ids,
         course_id=payload.course_id,
         lesson_id=payload.lesson_id,
+        chat_history=payload.chat_history or [],
     )
 
     citations = [
@@ -136,6 +139,90 @@ async def chat_ask(
         citations=citations,
         token_usage=TokenUsage(),
     )
+
+
+@app.post("/chat/ask/stream")
+async def chat_ask_stream(
+    payload: QueryRequest,
+    _=Depends(verify_internal_key),
+    __=Depends(enforce_chat_rate_limit),
+):
+    """Stream chat response via SSE. RAG pipeline runs sync, then Generator streams tokens."""
+    import asyncio
+    from src.agents.generator import generate_answer_stream
+    from src.agents.grader import grade_chunks
+    from src.agents.intent import classify_intent
+    from src.agents.retriever import retrieve, retrieve_for_course
+
+    async def event_stream():
+        try:
+            # Step 1: Intent
+            try:
+                intent_result = await asyncio.wait_for(
+                    asyncio.to_thread(classify_intent, payload.query), timeout=10.0
+                )
+                intent = intent_result.get("intent", "qa")
+            except Exception:
+                intent = "qa"
+
+            # Step 2: Retrieve
+            try:
+                if payload.course_id:
+                    chunks = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            retrieve_for_course, payload.query,
+                            course_id=payload.course_id, lesson_id=payload.lesson_id, limit=10,
+                        ), timeout=5.0,
+                    )
+                else:
+                    chunks = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            retrieve, payload.query,
+                            document_ids=payload.document_ids or None,
+                            user_id=payload.user_id or None, limit=10,
+                        ), timeout=5.0,
+                    )
+            except Exception:
+                chunks = []
+
+            # Step 3: Grade
+            try:
+                graded = await asyncio.wait_for(
+                    asyncio.to_thread(grade_chunks, payload.query, chunks), timeout=15.0
+                )
+                relevant_chunks = graded.get("relevant_chunks", [])
+            except Exception:
+                relevant_chunks = chunks
+
+            citations = [
+                {
+                    "document_id": c.get("document_id", ""),
+                    "chunk_id": c.get("id", ""),
+                    "page_number": c.get("page_number"),
+                    "text": c.get("text", "")[:200],
+                }
+                for c in relevant_chunks
+            ]
+            yield f"data: {_json.dumps({'type': 'meta', 'intent': intent, 'citations': citations})}\n\n"
+
+            # Step 4: Stream Generator
+            chat_history = getattr(payload, "chat_history", None) or []
+            full_answer = ""
+            try:
+                async for token in generate_answer_stream(
+                    payload.query, relevant_chunks, intent=intent, chat_history=chat_history
+                ):
+                    full_answer += token
+                    yield f"data: {_json.dumps({'type': 'token', 'text': token})}\n\n"
+            except Exception as e:
+                yield f"data: {_json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            yield f"data: {_json.dumps({'type': 'done', 'answer': full_answer})}\n\n"
+
+        except Exception as e:
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/study/quiz/generate", response_model=QuizGenerateResponse)

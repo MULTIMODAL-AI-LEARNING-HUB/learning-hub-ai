@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     AI_CHAT_RATE_LIMIT_PER_MINUTE: int = 20
 
     GROQ_MODEL: str = "llama3-8b-8192"
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":
