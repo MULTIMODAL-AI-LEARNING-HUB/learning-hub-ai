@@ -80,19 +80,27 @@ def retrieve(
     )
 
     try:
-        results = client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=limit,
-        )
+        if hasattr(client, "query_points"):
+            points = client.query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+            ).points
+        else:
+            points = client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+            )
         return [
             {
                 "id": str(r.id),
                 "score": r.score,
                 "payload": r.payload,
             }
-            for r in results.points
+            for r in points
         ]
     except Exception as e:
         print(f"Retriever error: {e}")
@@ -156,19 +164,27 @@ def retrieve_with_material_filter(
     )
 
     try:
-        results = client.query_points(
-            collection_name=COLLECTION_NAME,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=limit,
-        )
+        if hasattr(client, "query_points"):
+            points = client.query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+            ).points
+        else:
+            points = client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=limit,
+            )
         return [
             {
                 "id": str(r.id),
                 "score": r.score,
                 "payload": r.payload,
             }
-            for r in results.points
+            for r in points
         ]
     except Exception as e:
         print(f"Retriever error: {e}")

@@ -24,11 +24,17 @@ def generate_content(prompt: str, system_instruction: str | None = None) -> str:
         key = rotator.get_next_key()
         genai.configure(api_key=key)
         try:
-            model = genai.GenerativeModel(
-                model_name=settings.GEMINI_MODEL,
-                system_instruction=system_instruction,
-            )
-            response = model.generate_content(prompt)
+            try:
+                model = genai.GenerativeModel(
+                    model_name=settings.GEMINI_MODEL,
+                    system_instruction=system_instruction,
+                )
+                response = model.generate_content(prompt)
+            except TypeError:
+                # Fallback for google-generativeai < 0.4.0
+                model = genai.GenerativeModel(model_name=settings.GEMINI_MODEL)
+                full_prompt = f"CHỈ DẪN HỆ THỐNG:\n{system_instruction}\n\n{prompt}" if system_instruction else prompt
+                response = model.generate_content(full_prompt)
             return response.text or ""
         except Exception as e:
             last_error = e
@@ -55,12 +61,18 @@ def chat(messages: list[dict], system_instruction: str | None = None) -> str:
         key = rotator.get_next_key()
         genai.configure(api_key=key)
         try:
-            model = genai.GenerativeModel(
-                model_name=settings.GEMINI_MODEL,
-                system_instruction=system_instruction,
-            )
+            try:
+                model = genai.GenerativeModel(
+                    model_name=settings.GEMINI_MODEL,
+                    system_instruction=system_instruction,
+                )
+            except TypeError:
+                model = genai.GenerativeModel(model_name=settings.GEMINI_MODEL)
+
             chat_session = model.start_chat(history=messages[:-1] if messages else [])
             last_msg = messages[-1]["content"] if messages else ""
+            if system_instruction and len(messages) <= 1:
+                last_msg = f"CHỈ DẪN HỆ THỐNG:\n{system_instruction}\n\n{last_msg}"
             response = chat_session.send_message(last_msg)
             return response.text or ""
         except Exception as e:
