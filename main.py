@@ -29,7 +29,6 @@ from src.schemas.responses import (
     QuizQuestion,
     TokenUsage,
 )
-from src.utils.embeddings import get_embedding_model
 from src.workflows.graph import build_graph
 
 workflow = None
