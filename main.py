@@ -37,16 +37,30 @@ workflow = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Preload embedding model and initialize connection clients on startup."""
+    """Initialize lightweight clients on startup.
+
+    NOTE: the sentence-transformer embedding model (~500MB) is loaded LAZILY
+    on first use, never at startup — preloading it OOM-kills small dynos and
+    makes /health probes fail before the service can serve traffic.
+    Each init step is isolated so one failing dependency (e.g. missing API
+    key) never prevents the whole service from booting.
+    """
     global workflow
-    # Preload sentence transformer model
-    get_embedding_model()
-    # Init Qdrant
-    get_qdrant_client()
-    # Configure Gemini API
-    configure_gemini()
-    # Build graph workflow
-    workflow = build_graph()
+    import logging
+    log = logging.getLogger("ai.lifespan")
+    try:
+        get_qdrant_client()
+    except Exception as exc:
+        log.warning("Qdrant init deferred: %s", exc)
+    try:
+        configure_gemini()
+    except Exception as exc:
+        log.warning("Gemini init deferred: %s", exc)
+    try:
+        workflow = build_graph()
+    except Exception as exc:
+        log.warning("Workflow build deferred: %s", exc)
+        workflow = None
     yield
 
 
@@ -74,13 +88,17 @@ def root():
 
 @app.get("/health")
 def health_check():
-    """Verify health of connection pools and AI models."""
+    """Verify health of connection pools and AI models.
+
+    NOTE: embedding model load is lazy — the /health probe must NOT force a
+    ~500MB model download into RAM (would OOM-kill small Heroku dynos).
+    """
     status_info = {
         "status": "healthy",
         "qdrant": "unknown",
-        "embedding_model": "loaded" if get_embedding_model() is not None else "failed",
+        "embedding_model": "lazy",
     }
-    
+
     # Ping Qdrant
     try:
         client = get_qdrant_client()
