@@ -5,13 +5,13 @@ import logging
 import time
 from typing import TypedDict
 
-logger = logging.getLogger("ai.workflow")
-
 from src.agents.generator import generate_answer
 from src.agents.grader import grade_chunks
 from src.agents.intent import classify_intent
 from src.agents.reflection import reflect
 from src.agents.retriever import retrieve, retrieve_for_course
+
+logger = logging.getLogger("ai.workflow")
 
 
 class GraphState(TypedDict):
