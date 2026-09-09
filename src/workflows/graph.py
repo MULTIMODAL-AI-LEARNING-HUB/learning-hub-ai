@@ -74,7 +74,12 @@ def retriever_node(state: GraphState) -> GraphState:
 
 
 def grader_node(state: GraphState) -> GraphState:
-    """Grade relevance of retrieved chunks."""
+    """Grade relevance of retrieved chunks.
+
+    Citation metadata enrichment (document_id/page_number/...) is handled
+    inside grade_chunks() via enrich_relevant_chunks(), shared with the
+    /chat/ask/stream endpoint.
+    """
     result = grade_chunks(state["query"], state["retrieved_chunks"])
     state["relevant_chunks"] = result.get("relevant_chunks", [])
     return state
@@ -159,11 +164,15 @@ def build_graph():
 
         # Route based on intent
         if state["intent"] in ("qa", "summarize"):
-            # Step 2: Retrieve (Timeout 5s)
+            # Step 2: Retrieve (Timeout 60s — cold embedding model load
+            # ~500MB sentence-transformers can take 20-50s on first use)
             _t0 = time.monotonic()
             try:
-                state = await asyncio.wait_for(asyncio.to_thread(retriever_node, state), timeout=5.0)
-            except (asyncio.TimeoutError, Exception):
+                state = await asyncio.wait_for(asyncio.to_thread(retriever_node, state), timeout=60.0)
+            except asyncio.TimeoutError:
+                logger.warning("node=retriever timeout session=%s", state.get("session_id", ""))
+                state["retrieved_chunks"] = []
+            except Exception:
                 state["retrieved_chunks"] = []
             logger.info("node=retriever latency_ms=%.0f session=%s chunks=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("retrieved_chunks", [])))
 
@@ -184,20 +193,28 @@ def build_graph():
                 state["citations"] = []
             logger.info("node=generator latency_ms=%.0f session=%s answer_len=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("current_answer", "")))
 
-            # Step 5: Reflect (Timeout 30s)
-            _t0 = time.monotonic()
-            try:
-                state = await asyncio.wait_for(asyncio.to_thread(reflection_node, state), timeout=30.0)
-            except (asyncio.TimeoutError, Exception):
-                state["needs_reflection"] = False
-            logger.info("node=reflector latency_ms=%.0f session=%s needs_retry=%s", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), state.get("needs_reflection", False))
-
-            # Step 6: Retry if needed
-            if should_retry(state) == "retry":
+            # Step 5: Reflect (Timeout 15s, skipped after grader failure).
+            # When the grader timed out (relevant_chunks empty), self-checking
+            # an ungrounded fallback answer and re-running the generator adds
+            # up to 75s of pure latency — skip it and finalize immediately.
+            _had_relevant = bool(state.get("relevant_chunks"))
+            if _had_relevant:
+                _t0 = time.monotonic()
                 try:
-                    state = await asyncio.wait_for(asyncio.to_thread(generator_node, state), timeout=60.0)
+                    state = await asyncio.wait_for(asyncio.to_thread(reflection_node, state), timeout=15.0)
                 except (asyncio.TimeoutError, Exception):
-                    pass
+                    state["needs_reflection"] = False
+                logger.info("node=reflector latency_ms=%.0f session=%s needs_retry=%s", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), state.get("needs_reflection", False))
+
+                # Step 6: Retry if needed
+                if should_retry(state) == "retry":
+                    try:
+                        state = await asyncio.wait_for(asyncio.to_thread(generator_node, state), timeout=60.0)
+                    except (asyncio.TimeoutError, Exception):
+                        pass
+            else:
+                logger.info("node=reflector skipped session=%s reason=no_relevant_chunks", state.get("session_id", ""))
+                state["needs_reflection"] = False
 
             state = finalize_node(state)
         else:

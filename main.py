@@ -60,6 +60,24 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("Workflow build deferred: %s", exc)
         workflow = None
+
+    # Warm up SentenceTransformer model in a background daemon thread
+    # so first user request doesn't suffer 20-40s cold-start latency,
+    # while keeping /health and /ready probes fast and unblocked.
+    import threading
+
+    def _warmup_embeddings():
+        import time
+        time.sleep(3)
+        try:
+            from src.utils.embeddings import get_embedding_model
+            get_embedding_model()
+            log.info("SentenceTransformer embedding model warmed up successfully")
+        except Exception as exc:
+            log.warning("Embedding model warmup deferred: %s", exc)
+
+    threading.Thread(target=_warmup_embeddings, daemon=True).start()
+
     yield
 
 
@@ -182,14 +200,15 @@ async def chat_ask_stream(
             except Exception:
                 intent = "qa"
 
-            # Step 2: Retrieve
+            # Step 2: Retrieve (Timeout 60s — matches non-stream workflow;
+            # cold embedding model load ~500MB can take 20-50s on first use)
             try:
                 if payload.course_id:
                     chunks = await asyncio.wait_for(
                         asyncio.to_thread(
                             retrieve_for_course, payload.query,
                             course_id=payload.course_id, lesson_id=payload.lesson_id, limit=10,
-                        ), timeout=5.0,
+                        ), timeout=60.0,
                     )
                 else:
                     chunks = await asyncio.wait_for(
@@ -197,19 +216,31 @@ async def chat_ask_stream(
                             retrieve, payload.query,
                             document_ids=payload.document_ids or None,
                             user_id=payload.user_id or None, limit=10,
-                        ), timeout=5.0,
+                        ), timeout=60.0,
                     )
             except Exception:
                 chunks = []
 
-            # Step 3: Grade
+            # Step 3: Grade (citation metadata enrichment happens inside
+            # grade_chunks() via enrich_relevant_chunks(), shared with workflow)
             try:
                 graded = await asyncio.wait_for(
                     asyncio.to_thread(grade_chunks, payload.query, chunks), timeout=15.0
                 )
                 relevant_chunks = graded.get("relevant_chunks", [])
             except Exception:
-                relevant_chunks = chunks
+                from src.agents.grader import enrich_relevant_chunks
+                relevant_chunks = enrich_relevant_chunks(
+                    [
+                        {
+                            "id": c.get("id", ""),
+                            "text": (c.get("payload", {}) or {}).get("text", ""),
+                            "score": c.get("score", 0),
+                        }
+                        for c in chunks
+                    ],
+                    chunks,
+                )
 
             citations = [
                 {

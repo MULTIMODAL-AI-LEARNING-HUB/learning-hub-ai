@@ -42,17 +42,57 @@ def grade_chunks(query: str, chunks: list[dict]) -> dict:
         response = response.strip()
         if response.startswith("```"):
             response = response.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        return json.loads(response)
+        parsed = json.loads(response)
+        return {
+            "relevant_chunks": enrich_relevant_chunks(
+                parsed.get("relevant_chunks", []), chunks
+            ),
+            "avg_score": parsed.get("avg_score", 0),
+        }
     except Exception:
         return {
-            "relevant_chunks": [
-                {
-                    "id": c["id"],
-                    "text": c["payload"]["text"],
-                    "score": c["score"],
-                    "page_number": c["payload"].get("page_number"),
-                }
-                for c in chunks
-            ],
+            "relevant_chunks": enrich_relevant_chunks(
+                [
+                    {
+                        "id": c["id"],
+                        "text": c["payload"]["text"],
+                        "score": c["score"],
+                    }
+                    for c in chunks
+                ],
+                chunks,
+            ),
             "avg_score": sum(c["score"] for c in chunks) / len(chunks) if chunks else 0,
         }
+
+
+def enrich_relevant_chunks(relevant: list[dict], retrieved: list[dict]) -> list[dict]:
+    """Merge retriever payload metadata into grader output.
+
+    The Groq grader LLM returns only id/text/score (/page_number), which
+    drops document_id/material_id/course_id/lesson_id needed for citations.
+    This helper re-attaches that metadata by chunk id. Shared by the
+    non-stream workflow (grader_node) and the /chat/ask/stream endpoint.
+    """
+    meta_by_id: dict[str, dict] = {}
+    for c in retrieved or []:
+        payload = c.get("payload", {}) or {}
+        meta_by_id[str(c.get("id", ""))] = {
+            "document_id": payload.get("document_id", ""),
+            "page_number": payload.get("page_number"),
+            "material_id": payload.get("material_id", ""),
+            "course_id": payload.get("course_id", ""),
+            "lesson_id": payload.get("lesson_id", ""),
+        }
+
+    enriched = []
+    for rc in relevant or []:
+        meta = meta_by_id.get(str(rc.get("id", "")), {})
+        merged = dict(rc)
+        for k, v in meta.items():
+            if not merged.get(k) and v not in (None, ""):
+                merged[k] = v
+        if merged.get("page_number") is None and meta.get("page_number") is not None:
+            merged["page_number"] = meta["page_number"]
+        enriched.append(merged)
+    return enriched
