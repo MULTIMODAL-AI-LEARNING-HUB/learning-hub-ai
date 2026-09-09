@@ -232,25 +232,29 @@ async def chat_ask_stream(
                 chunks = []
 
             # Step 3: Grade (citation metadata enrichment happens inside
-            # grade_chunks() via enrich_relevant_chunks(), shared with workflow)
+            # grade_chunks() via enrich_relevant_chunks(), shared with workflow).
+            # If the grader times out or returns 0 relevant chunks for explicitly
+            # selected documents, fall back to top retrieved chunks so the answer
+            # stays grounded in the user's selected material.
             try:
                 graded = await asyncio.wait_for(
                     asyncio.to_thread(grade_chunks, payload.query, chunks), timeout=15.0
                 )
                 relevant_chunks = graded.get("relevant_chunks", [])
             except Exception:
+                relevant_chunks = []
+
+            if not relevant_chunks and chunks:
                 from src.agents.grader import enrich_relevant_chunks
-                relevant_chunks = enrich_relevant_chunks(
-                    [
-                        {
-                            "id": c.get("id", ""),
-                            "text": (c.get("payload", {}) or {}).get("text", ""),
-                            "score": c.get("score", 0),
-                        }
-                        for c in chunks
-                    ],
-                    chunks,
-                )
+                raw = [
+                    {
+                        "id": c.get("id", ""),
+                        "text": (c.get("payload", {}) or {}).get("text", ""),
+                        "score": c.get("score", 0),
+                    }
+                    for c in (chunks[:5] if (payload.document_ids or payload.course_id) else chunks)
+                ]
+                relevant_chunks = enrich_relevant_chunks(raw, chunks)
 
             citations = [
                 {

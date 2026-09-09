@@ -196,13 +196,52 @@ def build_graph():
                 state["retrieved_chunks"] = []
             logger.info("node=retriever latency_ms=%.0f session=%s chunks=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("retrieved_chunks", [])))
 
-            # Step 3: Grade (Timeout 15s)
+            # Step 3: Grade (Timeout 15s). On timeout/LLM failure, fall back to
+            # the raw retrieved chunks (enriched with citation metadata) instead
+            # of wiping relevant_chunks — otherwise the generator answers
+            # ungrounded and citations come back empty.
             _t0 = time.monotonic()
             try:
                 state = await asyncio.wait_for(asyncio.to_thread(grader_node, state), timeout=15.0)
-            except (asyncio.TimeoutError, Exception):
-                state["relevant_chunks"] = []
+            except (asyncio.TimeoutError, Exception) as exc:
+                logger.warning(
+                    "node=grader fallback to raw chunks session=%s reason=%s retrieved=%d",
+                    state.get("session_id", ""), type(exc).__name__,
+                    len(state.get("retrieved_chunks", [])),
+                )
+                try:
+                    from src.agents.grader import enrich_relevant_chunks
+                    raw = [
+                        {
+                            "id": c.get("id", ""),
+                            "text": (c.get("payload", {}) or {}).get("text", ""),
+                            "score": c.get("score", 0),
+                        }
+                        for c in state.get("retrieved_chunks", [])
+                    ]
+                    state["relevant_chunks"] = enrich_relevant_chunks(raw, state.get("retrieved_chunks", []))
+                except Exception:
+                    state["relevant_chunks"] = []
             logger.info("node=grader latency_ms=%.0f session=%s relevant=%d", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), len(state.get("relevant_chunks", [])))
+
+            # If grader returned 0 relevant chunks but we had chunks from user-selected
+            # documents (or course), fall back to top retrieved chunks so the answer
+            # remains grounded in the user's selected material rather than hallucinating.
+            if not state.get("relevant_chunks") and state.get("retrieved_chunks") and (state.get("document_ids") or state.get("course_id")):
+                logger.info(
+                    "node=grader empty relevance for explicit docs session=%s falling back to top %d retrieved chunks",
+                    state.get("session_id", ""), min(5, len(state["retrieved_chunks"])),
+                )
+                from src.agents.grader import enrich_relevant_chunks
+                raw = [
+                    {
+                        "id": c.get("id", ""),
+                        "text": (c.get("payload", {}) or {}).get("text", ""),
+                        "score": c.get("score", 0),
+                    }
+                    for c in state["retrieved_chunks"][:5]
+                ]
+                state["relevant_chunks"] = enrich_relevant_chunks(raw, state["retrieved_chunks"])
 
             # Step 4: Generate (Timeout 60s)
             _t0 = time.monotonic()
