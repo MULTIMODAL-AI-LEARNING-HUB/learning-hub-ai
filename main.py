@@ -218,6 +218,16 @@ async def chat_ask_stream(
                             user_id=payload.user_id or None, limit=10,
                         ), timeout=60.0,
                     )
+                    # Soft user_id filter: retry without user_id when the
+                    # strict filter yields nothing (mirrors retriever_node).
+                    if not chunks and payload.document_ids and payload.user_id:
+                        chunks = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                retrieve, payload.query,
+                                document_ids=payload.document_ids or None,
+                                user_id=None, limit=10,
+                            ), timeout=60.0,
+                        )
             except Exception:
                 chunks = []
 

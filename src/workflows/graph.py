@@ -48,6 +48,14 @@ def retriever_node(state: GraphState) -> GraphState:
     If course_id is provided, retrieves only from that course.
     If lesson_id is also provided, retrieves only from that lesson.
     Otherwise uses document_ids/user_id for filtering.
+
+    NOTE: user_id filter is applied as a soft preference, not a hard
+    requirement. Worker-upserted chunks may carry user_id as string UUID
+    while the gateway forwards user_id in a different string form, and
+    personal-doc chunks may lack user_id entirely. A strict AND filter
+    would then return zero hits even when document_ids match. So: first
+    try the strict filter, and if it yields nothing, retry with
+    document_ids only (dropping user_id) before giving up.
     """
     course_id = state.get("course_id")
     lesson_id = state.get("lesson_id")
@@ -68,6 +76,18 @@ def retriever_node(state: GraphState) -> GraphState:
             user_id=user_id,
             limit=10
         )
+        if not chunks and doc_ids and user_id:
+            logger.info(
+                "node=retriever strict filter empty (doc_ids=%d), "
+                "retrying without user_id session=%s",
+                len(doc_ids), state.get("session_id", ""),
+            )
+            chunks = retrieve(
+                state["query"],
+                document_ids=doc_ids,
+                user_id=None,
+                limit=10
+            )
 
     state["retrieved_chunks"] = chunks
     return state
