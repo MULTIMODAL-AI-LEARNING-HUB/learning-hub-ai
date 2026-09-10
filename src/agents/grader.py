@@ -21,7 +21,7 @@ def grade_chunks(query: str, chunks: list[dict]) -> dict:
         return {"relevant_chunks": [], "avg_score": 0}
 
     chunks_text = "\n\n".join(
-        [untrusted_text(f"CHUNK_{i}", c["payload"]["text"][:300]) for i, c in enumerate(chunks)]
+        [untrusted_text(f"CHUNK_{i}", c["payload"]["text"][:1200]) for i, c in enumerate(chunks)]
     )
 
     try:

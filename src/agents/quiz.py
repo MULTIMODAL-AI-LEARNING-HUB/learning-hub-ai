@@ -87,8 +87,33 @@ def _normalize_options_and_answer(raw_q: dict) -> dict:
     }
 
 
+PLACEHOLDER_PATTERNS = (
+    "khái niệm hoặc cơ chế cốt lõi",
+    "định nghĩa hoặc thành phần",
+    "phương án ",
+    "câu hỏi 1:",
+    "câu hỏi 1 ",
+    "nội dung được tổng hợp từ phần giới thiệu",
+)
+
+
+def _looks_placeholder(question: dict) -> bool:
+    """Detect template/generic questions that are not grounded in the document."""
+    blob = " ".join([
+        str(question.get("question") or ""),
+        " ".join(str(o) for o in (question.get("options") or [])),
+        str(question.get("explanation") or ""),
+    ]).lower()
+    return any(p in blob for p in PLACEHOLDER_PATTERNS)
+
+
 def generate_quiz(context: str, quiz_type: str = "quick", question_count: int = 5) -> list[dict]:
-    """Generate high-precision enterprise quiz questions from context."""
+    """Generate high-precision enterprise quiz questions from context.
+
+    Raises RuntimeError on LLM failure or placeholder-quality output so the
+    Celery worker retries and the frontend surfaces a failed state instead
+    of silently showing generic template questions.
+    """
     # Lifted context limit: allow up to 20k characters for comprehensive coverage
     safe_context = untrusted_text("SOURCE_CONTEXT", context, 20_000)
     prompt = f"""Dựa vào tài liệu học tập sau, hãy biên soạn chính xác {question_count} câu hỏi trắc nghiệm (độ sâu: {quiz_type}).
@@ -97,46 +122,38 @@ Yêu cầu cụ thể:
 - Các câu hỏi phải phân bổ trải đều toàn bộ nội dung trong tài liệu (cả các phần đầu, giữa và kết luận).
 - Không tạo các câu hỏi lặp lại nội dung.
 - Mỗi câu có đủ 4 phương án độc lập và lời giải thích (explanation) trích dẫn từ tài liệu.
+- Mỗi câu hỏi, phương án và giải thích phải trích xuất SỐ LIỆU, THUẬT NGỮ, QUY TRÌNH cụ thể có trong tài liệu. CẤM dùng câu chữ mẫu chung chung như "khái niệm cốt lõi", "thành phần thứ nhất", "phương án A".
 
 Tài liệu tham chiếu:
 {safe_context}
 
 Trả về DUY NHẤT một JSON array."""
 
-    try:
-        response = generate_content(
-            prompt=prompt,
-            system_instruction=QUIZ_SYSTEM_PROMPT,
-        )
-        response = response.strip()
-        if response.startswith("```"):
-            response = response.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-        questions = json.loads(response)
-        if isinstance(questions, dict) and "questions" in questions:
-            questions = questions["questions"]
-        if not isinstance(questions, list):
-            raise ValueError("Expected JSON array of questions")
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            response = generate_content(
+                prompt=prompt,
+                system_instruction=QUIZ_SYSTEM_PROMPT,
+            )
+            response = response.strip()
+            if response.startswith("```"):
+                response = response.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            questions = json.loads(response)
+            if isinstance(questions, dict) and "questions" in questions:
+                questions = questions["questions"]
+            if not isinstance(questions, list):
+                raise ValueError("Expected JSON array of questions")
 
-        normalized = [_normalize_options_and_answer(q) for q in questions if isinstance(q, dict)]
-        if len(normalized) >= question_count:
-            return normalized[:question_count]
-        if normalized:
-            return normalized
-        raise ValueError("Empty normalized questions list")
-    except Exception:
-        # High quality fallback reflecting realistic educational sample
-        return [
-            {
-                "id": str(uuid.uuid4()),
-                "question": f"Câu hỏi {i+1}: Khái niệm hoặc cơ chế cốt lõi được nêu trong tài liệu là gì?",
-                "options": [
-                    "Định nghĩa hoặc thành phần thứ nhất",
-                    "Định nghĩa hoặc thành phần thứ hai",
-                    "Định nghĩa hoặc thành phần thứ ba",
-                    "Định nghĩa hoặc thành phần thứ tư",
-                ],
-                "correct_answer": "A",
-                "explanation": "Nội dung được tổng hợp từ phần giới thiệu ban đầu của tài liệu.",
-            }
-            for i in range(min(question_count, 5))
-        ]
+            normalized = [_normalize_options_and_answer(q) for q in questions if isinstance(q, dict)]
+            # Quality gate: drop placeholder/template questions
+            normalized = [q for q in normalized if q.get("question") and not _looks_placeholder(q)]
+            if len(normalized) >= question_count:
+                return normalized[:question_count]
+            if normalized:
+                return normalized
+            raise ValueError("Empty normalized questions list after quality gate")
+        except Exception as exc:
+            last_error = exc
+            continue
+    raise RuntimeError(f"Quiz generation failed after retries: {last_error}")

@@ -182,8 +182,15 @@ def build_graph():
             state["sub_intent"] = "default"
         logger.info("node=intent latency_ms=%.0f session=%s intent=%s", (time.monotonic() - _t0) * 1000, state.get("session_id", ""), state.get("intent", ""))
 
-        # Route based on intent
-        if state["intent"] in ("qa", "summarize"):
+        # Route based on intent. Greetings (hi/hello/...) skip RAG entirely:
+        # short-circuit with a friendly reply and empty citations instead of
+        # force-attaching 10 irrelevant chunks and "answering from documents".
+        if state["intent"] == "greeting":
+            from src.agents.generator import generate_greeting_reply
+            state["current_answer"] = generate_greeting_reply(state["query"])
+            state["citations"] = []
+            state = finalize_node(state)
+        elif state["intent"] in ("qa", "summarize"):
             # Step 2: Retrieve (Timeout 60s — cold embedding model load
             # ~500MB sentence-transformers can take 20-50s on first use)
             _t0 = time.monotonic()

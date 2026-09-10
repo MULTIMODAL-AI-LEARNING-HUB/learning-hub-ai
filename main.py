@@ -200,6 +200,15 @@ async def chat_ask_stream(
             except Exception:
                 intent = "qa"
 
+            # Greetings skip RAG entirely: answer directly with no citations.
+            if intent == "greeting":
+                from src.agents.generator import generate_greeting_reply
+                full_greeting = generate_greeting_reply(payload.query)
+                yield f"data: {_json.dumps({'type': 'meta', 'intent': intent, 'citations': []})}\n\n"
+                yield f"data: {_json.dumps({'type': 'token', 'text': full_greeting})}\n\n"
+                yield f"data: {_json.dumps({'type': 'done', 'answer': full_greeting})}\n\n"
+                return
+
             # Step 2: Retrieve (Timeout 60s — matches non-stream workflow;
             # cold embedding model load ~500MB can take 20-50s on first use)
             try:
