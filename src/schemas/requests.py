@@ -17,6 +17,7 @@ class QuizGenerateRequest(BaseModel):
     context: str = Field(min_length=1, max_length=100_000)
     quiz_type: str = Field(default="quick", pattern="^(quick|detailed)$")
     question_count: int = Field(default=5, ge=1, le=20)
+    coverage_chunks: int | None = Field(default=None, ge=0)
 
 
 class QuizGenerateFromLessonRequest(BaseModel):
@@ -39,3 +40,4 @@ class FlashcardGenerateRequest(BaseModel):
     context: str = Field(min_length=1, max_length=100_000)
     set_name: str = Field(default="", max_length=255)
     count: int = Field(default=20, ge=1, le=50)
+    coverage_chunks: int | None = Field(default=None, ge=0)

@@ -30,6 +30,7 @@ class QuizQuestion(BaseModel):
     question: str
     options: list[str]
     correct_answer: str
+    explanation: str | None = None
 
 
 class QuizGenerateResponse(BaseModel):

@@ -300,6 +300,7 @@ async def generate_quiz(payload: QuizGenerateRequest, _=Depends(verify_internal_
                 question=q["question"],
                 options=q["options"],
                 correct_answer=q["correct_answer"],
+                explanation=q.get("explanation"),
             )
             for q in questions
         ]
@@ -339,6 +340,7 @@ async def generate_quiz_from_lesson(payload: QuizGenerateFromLessonRequest, _=De
                 question=q["question"],
                 options=q["options"],
                 correct_answer=q["correct_answer"],
+                explanation=q.get("explanation"),
             )
             for q in questions
         ]
