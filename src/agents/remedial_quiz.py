@@ -6,7 +6,6 @@ and generating targeted micro-quizzes (scaffolded questions) to reinforce weak c
 
 import json
 import logging
-import re
 import uuid
 
 from src.agents.quiz import _looks_placeholder, _normalize_options_and_answer
