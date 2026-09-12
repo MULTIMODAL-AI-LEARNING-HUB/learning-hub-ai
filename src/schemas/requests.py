@@ -10,6 +10,7 @@ class QueryRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list, max_length=100)
     course_id: str | None = Field(default=None, max_length=100)
     lesson_id: str | None = Field(default=None, max_length=100)
+    tutor_mode: str = Field(default="standard", max_length=50)
     chat_history: list[dict] | None = None
 
 
@@ -41,3 +42,17 @@ class FlashcardGenerateRequest(BaseModel):
     set_name: str = Field(default="", max_length=255)
     count: int = Field(default=20, ge=1, le=50)
     coverage_chunks: int | None = Field(default=None, ge=0)
+
+
+class RemedialQuizRequest(BaseModel):
+    lesson_id: str | None = Field(default=None, max_length=100)
+    course_id: str | None = Field(default=None, max_length=100)
+    lesson_title: str | None = Field(default="", max_length=255)
+    lesson_content: str = Field(default="", max_length=100_000)
+    missed_questions: list[dict] = Field(default_factory=list, max_length=50)
+    question_count: int = Field(default=3, ge=1, le=10)
+
+
+class MindmapGenerateRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=100_000)
+    title: str = Field(default="", max_length=255)

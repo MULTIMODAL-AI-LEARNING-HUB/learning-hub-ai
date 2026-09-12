@@ -15,9 +15,11 @@ from src.core.rate_limit import enforce_chat_rate_limit
 from src.schemas.requests import (
     EssayGradeRequest,
     FlashcardGenerateRequest,
+    MindmapGenerateRequest,
     QueryRequest,
     QuizGenerateFromLessonRequest,
     QuizGenerateRequest,
+    RemedialQuizRequest,
 )
 from src.schemas.responses import (
     ChatResponse,
@@ -25,6 +27,7 @@ from src.schemas.responses import (
     EssayGradeResponse,
     FlashcardGenerateResponse,
     FlashcardItem,
+    MindmapGenerateResponse,
     QuizGenerateResponse,
     QuizQuestion,
     TokenUsage,
@@ -154,6 +157,7 @@ async def chat_ask(
         course_id=payload.course_id,
         lesson_id=payload.lesson_id,
         chat_history=payload.chat_history or [],
+        tutor_mode=getattr(payload, "tutor_mode", "standard") or "standard",
     )
 
     citations = [
@@ -203,7 +207,10 @@ async def chat_ask_stream(
             # Greetings skip RAG entirely: answer directly with no citations.
             if intent == "greeting":
                 from src.agents.generator import generate_greeting_reply
-                full_greeting = generate_greeting_reply(payload.query)
+                full_greeting = generate_greeting_reply(
+                    payload.query,
+                    tutor_mode=getattr(payload, "tutor_mode", "standard") or "standard",
+                )
                 yield f"data: {_json.dumps({'type': 'meta', 'intent': intent, 'citations': []})}\n\n"
                 yield f"data: {_json.dumps({'type': 'token', 'text': full_greeting})}\n\n"
                 yield f"data: {_json.dumps({'type': 'done', 'answer': full_greeting})}\n\n"
@@ -278,10 +285,15 @@ async def chat_ask_stream(
 
             # Step 4: Stream Generator
             chat_history = getattr(payload, "chat_history", None) or []
+            tutor_mode = getattr(payload, "tutor_mode", "standard") or "standard"
             full_answer = ""
             try:
                 async for token in generate_answer_stream(
-                    payload.query, relevant_chunks, intent=intent, chat_history=chat_history
+                    payload.query,
+                    relevant_chunks,
+                    intent=intent,
+                    chat_history=chat_history,
+                    tutor_mode=tutor_mode,
                 ):
                     full_answer += token
                     yield f"data: {_json.dumps({'type': 'token', 'text': token})}\n\n"
@@ -356,6 +368,42 @@ async def generate_quiz_from_lesson(payload: QuizGenerateFromLessonRequest, _=De
     )
 
 
+@app.post("/study/quiz/remedial", response_model=QuizGenerateResponse)
+async def generate_remedial_quiz_endpoint(
+    payload: RemedialQuizRequest, _=Depends(verify_internal_key)
+) -> QuizGenerateResponse:
+    """Generate targeted micro-quiz questions based on student's missed questions."""
+    from src.agents.remedial_quiz import generate_remedial_quiz as _generate_remedial_quiz
+    from src.agents.retriever import retrieve
+
+    context = payload.lesson_content or ""
+    if not context and payload.lesson_id:
+        try:
+            chunks = retrieve(query="", lesson_id=payload.lesson_id, limit=10)
+            context = "\n".join([c["payload"].get("text", "") for c in chunks if c.get("payload")])
+        except Exception:
+            context = ""
+
+    questions = _generate_remedial_quiz(
+        missed_questions=payload.missed_questions,
+        lesson_content=context,
+        lesson_title=payload.lesson_title or "",
+        question_count=payload.question_count,
+    )
+    return QuizGenerateResponse(
+        questions=[
+            QuizQuestion(
+                id=q["id"],
+                question=q["question"],
+                options=q["options"],
+                correct_answer=q["correct_answer"],
+                explanation=q.get("explanation"),
+            )
+            for q in questions
+        ]
+    )
+
+
 @app.post("/study/flashcards/generate", response_model=FlashcardGenerateResponse)
 async def generate_flashcards(payload: FlashcardGenerateRequest, _=Depends(verify_internal_key)) -> FlashcardGenerateResponse:
     """Generate flashcards from context."""
@@ -388,6 +436,17 @@ async def grade_essay(payload: EssayGradeRequest, _=Depends(verify_internal_key)
         feedback=result.get("feedback", ""),
         comparisons=result.get("comparisons", []),
     )
+
+
+@app.post("/study/mindmap/generate", response_model=MindmapGenerateResponse)
+async def generate_mindmap_endpoint(
+    payload: MindmapGenerateRequest, _=Depends(verify_internal_key)
+) -> MindmapGenerateResponse:
+    """Generate Markdown hierarchy for interactive Mindmap rendering."""
+    from src.agents.mindmap import generate_mindmap as _generate_mindmap
+
+    tree = _generate_mindmap(payload.content, payload.title)
+    return MindmapGenerateResponse(markdown_tree=tree)
 
 
 @app.post("/internal/keys/sync")

@@ -20,6 +20,7 @@ class GraphState(TypedDict):
     user_id: str
     course_id: str | None
     lesson_id: str | None
+    tutor_mode: str
     document_ids: list[str]
     chat_history: list[dict]
     intent: str
@@ -112,6 +113,7 @@ def generator_node(state: GraphState) -> GraphState:
         state["relevant_chunks"],
         intent=state["intent"],
         chat_history=state.get("chat_history") or [],
+        tutor_mode=state.get("tutor_mode", "standard"),
     )
     state["current_answer"] = result.get("answer", "")
     state["citations"] = result.get("citations", [])
@@ -153,6 +155,7 @@ def build_graph():
         course_id: str | None = None,
         lesson_id: str | None = None,
         chat_history: list[dict] | None = None,
+        tutor_mode: str = "standard",
     ) -> dict:
         state: GraphState = {
             "query": query,
@@ -160,6 +163,7 @@ def build_graph():
             "user_id": user_id,
             "course_id": course_id,
             "lesson_id": lesson_id,
+            "tutor_mode": tutor_mode or "standard",
             "document_ids": document_ids or [],
             "chat_history": chat_history or [],
             "intent": "",
@@ -187,7 +191,7 @@ def build_graph():
         # force-attaching 10 irrelevant chunks and "answering from documents".
         if state["intent"] == "greeting":
             from src.agents.generator import generate_greeting_reply
-            state["current_answer"] = generate_greeting_reply(state["query"])
+            state["current_answer"] = generate_greeting_reply(state["query"], tutor_mode=state.get("tutor_mode", "standard"))
             state["citations"] = []
             state = finalize_node(state)
         elif state["intent"] in ("qa", "summarize"):

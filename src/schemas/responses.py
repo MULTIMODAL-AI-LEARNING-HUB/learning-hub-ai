@@ -51,3 +51,7 @@ class EssayGradeResponse(BaseModel):
     score: float
     feedback: str
     comparisons: list[dict] = []
+
+
+class MindmapGenerateResponse(BaseModel):
+    markdown_tree: str
